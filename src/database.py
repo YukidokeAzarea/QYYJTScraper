@@ -46,12 +46,16 @@ class DatabaseManager:
         
         表结构:
         - id: 唯一ID (主键，自增)
+        - bond_code: 债券代码
         - bond_short_name: 债券简称
+        - bond_full_name: 债券全称
         - document_title: 文档标题
         - document_type: 文档类型
         - download_url: 下载链接 (唯一)
         - file_size: 文件大小
         - publication_date: 发布日期
+        - province: 省份
+        - city: 城市
         - scraped_at: 抓取时间
         """
         try:
@@ -60,12 +64,16 @@ class DatabaseManager:
             create_table_sql = """
             CREATE TABLE IF NOT EXISTS bond_documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bond_code TEXT,
                 bond_short_name TEXT NOT NULL,
+                bond_full_name TEXT,
                 document_title TEXT NOT NULL,
                 document_type TEXT,
                 download_url TEXT UNIQUE,
                 file_size TEXT,
                 publication_date TEXT,
+                province TEXT,
+                city TEXT,
                 scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -90,54 +98,89 @@ class DatabaseManager:
         
         Args:
             document_info: 包含文档信息的字典，应包含以下键：
+                - bond_code: 债券代码
                 - bond_short_name: 债券简称
+                - bond_full_name: 债券全称
                 - document_title: 文档标题
                 - document_type: 文档类型
                 - download_url: 下载链接
                 - file_size: 文件大小
                 - publication_date: 发布日期
+                - province: 省份
+                - city: 城市
         
         Returns:
             bool: 插入是否成功
         """
         try:
+            # 详细的数据验证和日志
+            logger.debug(f"开始插入文档: {document_info.get('document_title', 'Unknown')}")
+            logger.debug(f"文档数据: {document_info}")
+            
+            # 验证必需字段
+            required_fields = ['bond_short_name', 'document_title']
+            missing_fields = [field for field in required_fields if not document_info.get(field)]
+            if missing_fields:
+                logger.error(f"Database write error: 缺少必需字段 {missing_fields}")
+                return False
+            
             cursor = self.connection.cursor()
             
             # 检查是否已存在相同的下载链接
-            cursor.execute(
-                "SELECT id FROM bond_documents WHERE download_url = ?",
-                (document_info.get('download_url'),)
-            )
+            download_url = document_info.get('download_url')
+            if download_url:
+                cursor.execute(
+                    "SELECT id FROM bond_documents WHERE download_url = ?",
+                    (download_url,)
+                )
+                
+                if cursor.fetchone():
+                    logger.warning(f"文档已存在，跳过插入: {download_url}")
+                    return False
             
-            if cursor.fetchone():
-                logger.warning(f"文档已存在，跳过插入: {document_info.get('download_url')}")
-                return False
-            
-            # 插入新记录
+            # 插入新记录 - 使用完整的字段列表
             insert_sql = """
             INSERT INTO bond_documents 
-            (bond_short_name, document_title, document_type, download_url, file_size, publication_date)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (bond_code, bond_short_name, bond_full_name, document_title, document_type, 
+             download_url, file_size, publication_date, province, city)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             
-            cursor.execute(insert_sql, (
-                document_info.get('bond_short_name'),
-                document_info.get('document_title'),
-                document_info.get('document_type'),
-                document_info.get('download_url'),
-                document_info.get('file_size'),
-                document_info.get('publication_date')
-            ))
+            # 准备插入数据，确保字段顺序与SQL语句一致
+            insert_data = (
+                document_info.get('bond_code', ''),
+                document_info.get('bond_short_name', ''),
+                document_info.get('bond_full_name', ''),
+                document_info.get('document_title', ''),
+                document_info.get('document_type', ''),
+                document_info.get('download_url', ''),
+                document_info.get('file_size', ''),
+                document_info.get('publication_date', ''),
+                document_info.get('province', ''),
+                document_info.get('city', '')
+            )
             
+            logger.debug(f"插入数据: {insert_data}")
+            
+            cursor.execute(insert_sql, insert_data)
             self.connection.commit()
-            logger.info(f"成功插入文档: {document_info.get('document_title')}")
+            
+            logger.info(f"✅ 成功插入文档: {document_info.get('document_title')}")
             return True
             
         except sqlite3.IntegrityError as e:
             logger.warning(f"文档已存在，跳过插入: {e}")
             return False
+        except sqlite3.Error as e:
+            logger.error(f"Database write error (SQLite): {e}")
+            logger.error(f"SQL语句: {insert_sql}")
+            logger.error(f"数据: {insert_data}")
+            return False
         except Exception as e:
-            logger.error(f"插入文档失败: {e}")
+            logger.error(f"Database write error: {e}")
+            logger.error(f"文档信息: {document_info}")
+            import traceback
+            logger.error(f"详细错误: {traceback.format_exc()}")
             return False
     
     def insert_documents_batch(self, documents: List[Dict]) -> int:
@@ -182,12 +225,16 @@ class DatabaseManager:
             for row in rows:
                 documents.append({
                     'id': row['id'],
+                    'bond_code': row['bond_code'],
                     'bond_short_name': row['bond_short_name'],
+                    'bond_full_name': row['bond_full_name'],
                     'document_title': row['document_title'],
                     'document_type': row['document_type'],
                     'download_url': row['download_url'],
                     'file_size': row['file_size'],
                     'publication_date': row['publication_date'],
+                    'province': row['province'],
+                    'city': row['city'],
                     'scraped_at': row['scraped_at']
                 })
             
@@ -215,12 +262,16 @@ class DatabaseManager:
             for row in rows:
                 documents.append({
                     'id': row['id'],
+                    'bond_code': row['bond_code'],
                     'bond_short_name': row['bond_short_name'],
+                    'bond_full_name': row['bond_full_name'],
                     'document_title': row['document_title'],
                     'document_type': row['document_type'],
                     'download_url': row['download_url'],
                     'file_size': row['file_size'],
                     'publication_date': row['publication_date'],
+                    'province': row['province'],
+                    'city': row['city'],
                     'scraped_at': row['scraped_at']
                 })
             

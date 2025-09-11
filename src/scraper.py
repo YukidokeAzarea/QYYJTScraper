@@ -234,18 +234,19 @@ class QYYJTScraper:
             # 设置User-Agent
             chrome_options.add_argument(f"--user-agent={DEFAULT_HEADERS['User-Agent']}")
             
-            # 直接使用系统PATH中的chromedriver
+            # 使用本地Chrome驱动
             driver = None
             try:
-                logger.info("使用系统PATH中的chromedriver...")
-                driver = webdriver.Chrome(options=chrome_options)
+                logger.info("使用本地Chrome驱动...")
+                chromedriver_path = str(Path(__file__).parent.parent / "chromedriver-mac-x64" / "chromedriver")
+                service = Service(chromedriver_path)
+                driver = webdriver.Chrome(service=service, options=chrome_options)
             except Exception as e:
-                logger.error(f"系统PATH中的chromedriver失败: {e}")
-                # 如果系统PATH失败，尝试使用webdriver-manager
+                logger.error(f"本地Chrome驱动失败: {e}")
+                # 如果本地驱动失败，尝试使用系统PATH
                 try:
-                    logger.info("使用webdriver-manager下载ChromeDriver...")
-                    service = Service(ChromeDriverManager().install())
-                    driver = webdriver.Chrome(service=service, options=chrome_options)
+                    logger.info("尝试使用系统PATH中的chromedriver...")
+                    driver = webdriver.Chrome(options=chrome_options)
                 except Exception as e2:
                     logger.error(f"webdriver-manager下载ChromeDriver失败: {e2}")
                     raise Exception(f"ChromeDriver初始化失败: 系统PATH({e}), webdriver-manager({e2})")

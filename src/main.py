@@ -21,6 +21,7 @@ sys.path.append(str(Path(__file__).parent))
 from .scraper import QYYJTScraper
 from .database import DatabaseManager
 from .smart_pool import SmartAccountPool
+from .hybrid_scraper import HybridScraper
 from .config import *
 
 
@@ -101,7 +102,7 @@ class ProductionScraper:
             return []
     
     def process_single_bond(self, bond_info: Dict, progress_bar: tqdm) -> bool:
-        """处理单个债券"""
+        """处理单个债券（使用传统方法）"""
         bond_name = bond_info['bond_short_name']
         
         try:
@@ -128,7 +129,9 @@ class ProductionScraper:
             
             # 保存到数据库
             success_count = 0
-            for doc in documents:
+            logger.info(f"开始保存 {len(documents)} 个文档到数据库")
+            
+            for i, doc in enumerate(documents):
                 try:
                     # 添加额外的债券信息到文档数据（不覆盖API解析的信息）
                     doc.update({
@@ -136,15 +139,24 @@ class ProductionScraper:
                         'city': bond_info.get('city', ''),
                     })
                     
+                    # 验证文档数据完整性
+                    logger.debug(f"准备保存第 {i+1}/{len(documents)} 个文档: {doc.get('document_title', 'Unknown')}")
+                    logger.debug(f"文档数据字段: {list(doc.keys())}")
+                    
                     # 插入数据库
                     success = self.db.insert_document(doc)
                     if success:
                         success_count += 1
-                        logger.debug(f"✅ 保存文档: {doc.get('document_title', 'Unknown')}")
+                        logger.debug(f"✅ 成功保存文档: {doc.get('document_title', 'Unknown')}")
+                    else:
+                        logger.warning(f"⚠️ 文档保存失败: {doc.get('document_title', 'Unknown')}")
                     
                 except Exception as e:
                     error_msg = f"保存文档失败: {doc.get('document_title', 'Unknown')} - {str(e)}"
                     logger.error(f"❌ {error_msg}")
+                    logger.error(f"文档数据: {doc}")
+                    import traceback
+                    logger.error(f"详细错误: {traceback.format_exc()}")
                     self._log_error(bond_name, error_msg, "SAVE_FAILED", doc.get('document_title', ''))
                     continue
             
@@ -167,6 +179,52 @@ class ProductionScraper:
             return False
         finally:
             progress_bar.update(1)
+    
+    def process_bonds_with_hybrid_scraper(self, bond_infos: List[Dict], phone: str, password: str) -> bool:
+        """
+        使用混合爬取器处理债券列表
+        
+        Args:
+            bond_infos: 债券信息列表
+            phone: 手机号
+            password: 密码
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            logger.info("🚀 使用混合爬取器处理债券列表")
+            
+            # 提取债券名称
+            bond_names = [info['bond_short_name'] for info in bond_infos]
+            
+            # 创建混合爬取器
+            hybrid_scraper = HybridScraper()
+            
+            # 初始化
+            if not hybrid_scraper.initialize():
+                logger.error("❌ 混合爬取器初始化失败")
+                return False
+            
+            # 执行完整流程
+            success = hybrid_scraper.process_bonds_complete(bond_names, phone, password)
+            
+            if success:
+                # 获取统计信息
+                stats = hybrid_scraper.get_database_stats()
+                logger.info(f"✅ 混合爬取完成，统计信息: {stats}")
+                
+                # 更新处理计数
+                self.processed_count = stats.get('total_bonds', 0)
+                
+                return True
+            else:
+                logger.error("❌ 混合爬取失败")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ 混合爬取器处理失败: {e}")
+            return False
     
     def _log_error(self, bond_name: str, error_msg: str, error_type: str, document_title: str = ""):
         """记录错误到日志"""
@@ -446,6 +504,9 @@ def main():
     parser.add_argument('--pause', type=str, help='暂停文件路径')
     parser.add_argument('--test', action='store_true', help='测试模式（只处理1个债券）')
     parser.add_argument('--force', action='store_true', help='强制重新爬取所有债券（包括已存在的）')
+    parser.add_argument('--hybrid', action='store_true', help='使用混合爬取模式（Selenium+Requests）')
+    parser.add_argument('--phone', type=str, help='手机号（混合模式必需）')
+    parser.add_argument('--password', type=str, help='密码（混合模式必需）')
     
     args = parser.parse_args()
     
@@ -458,14 +519,43 @@ def main():
     scraper = ProductionScraper()
     
     try:
-        # 开始批量处理
-        scraper.run_batch_processing(
-            start_index=args.start,
-            max_bonds=args.max,
-            resume_from_file=args.pause,
-            resume=args.resume,
-            force=args.force
-        )
+        # 混合爬取模式
+        if args.hybrid:
+            if not args.phone or not args.password:
+                logger.error("❌ 混合模式需要提供手机号和密码")
+                logger.error("使用方法: python main.py --hybrid --phone 手机号 --password 密码")
+                return
+            
+            logger.info("🚀 使用混合爬取模式")
+            
+            # 加载债券列表
+            bonds = scraper.load_bonds_list()
+            if not bonds:
+                logger.error("❌ 没有可处理的债券")
+                return
+            
+            # 限制处理数量
+            if args.max:
+                bonds = bonds[:args.max]
+            
+            # 使用混合爬取器处理
+            success = scraper.process_bonds_with_hybrid_scraper(bonds, args.phone, args.password)
+            
+            if success:
+                logger.info("🎉 混合爬取完成！")
+            else:
+                logger.error("❌ 混合爬取失败")
+        else:
+            # 传统模式
+            logger.info("🚀 使用传统爬取模式")
+            scraper.run_batch_processing(
+                start_index=args.start,
+                max_bonds=args.max,
+                resume_from_file=args.pause,
+                resume=args.resume,
+                force=args.force
+            )
+            
     except KeyboardInterrupt:
         logger.info("⏸️ 程序被用户中断")
     except Exception as e:
