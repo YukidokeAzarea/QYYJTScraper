@@ -1,0 +1,20 @@
+{
+  "accounts": [
+    {
+      "phone": "your_phone_number",
+      "password": "your_password",
+      "description": "主账号"
+    },
+    {
+      "phone": "backup_phone_number",
+      "password": "backup_password", 
+      "description": "备用账号1"
+    }
+  ],
+  "settings": {
+    "max_concurrent_accounts": 3,
+    "account_switch_interval": 10,
+    "error_threshold": 5,
+    "auto_switch_on_error": true
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "download_settings": {
+    "max_workers": 5,
+    "timeout": 30,
+    "output_dir": "downloads",
+    "retry_attempts": 3,
+    "retry_delay": 5
+  },
+  "url_mapping": {
+    "fcnews_protocol": {
+      "description": "fcnews://协议URL映射规则",
+      "base_url": "https://api.example.com/download",
+      "url_template": "https://api.example.com/download/{doc_id}",
+      "note": "需要根据实际API调整URL模板"
+    },
+    "http_protocol": {
+      "description": "标准HTTP/HTTPS URL直接使用",
+      "note": "无需特殊处理"
+    }
+  },
+  "file_naming": {
+    "template": "{bond_name}_{doc_title}.pdf",
+    "max_length": 100,
+    "invalid_chars": "<>:\"/\\|?*",
+    "replacement_char": "_"
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(levelname)s - %(message)s",
+    "file_encoding": "utf-8"
+  }
+}
