@@ -1,269 +1,200 @@
-- # 企研通城投债公告爬虫 (QYYJT Bond Prospectus Scraper)
+# QYYJTScraper - 企业预警通债券公告爬虫
 
-  ## 1. 项目概述
+这是一个针对 **企业预警通 (qyyjt.cn)** 网站的 Python 爬虫项目，旨在自动化地抓取指定债券列表的所有相关公告信息，并将结果持久化存储到 SQLite 数据库中。
 
-  本项目是一个为**企研通 (qyyjt.cn)** 网站定制的自动化爬虫，旨在批量抓取城投债的募集说明书及相关公告。项目采用 Python 编写，并设计了一套健壮的混合爬取架构：
+该爬虫通过模拟登录获取认证凭据，然后直接与后端 API 交互，实现了高效、稳定的数据采集。同时，它还内置了多账号轮换、速率限制处理、断点续传等高级功能，非常适合进行批量数据采集任务。
 
-  - **Selenium-wire**: 负责模拟真实用户行为，自动完成复杂的登录流程，并拦截关键网络请求，以安全、可靠地获取动态生成的认证令牌和目标实体 `code`。
-  - **Requests**: 在获取认证信息后，接管后续所有数据拉取任务，以高并发、高效率的方式与后端 API 直接交互，实现大规模数据的快速采集。
+## 目录
 
-  项目内置了智能账号池管理、全面的错误处理与重试机制、基于 SQLite 的断点续传，以及灵活的 Excel 数据导出功能，目标是实现无人值守的高效、稳定数据采集。
+- [主要功能](#主要功能)
+- [项目结构](#项目结构)
+- [环境准备与依赖安装](#环境准备与依赖安装)
+- [配置指南](#配置指南)
+  - [1. 配置账号池 (accounts.json)](#1-配置账号池-accountsjson)
+  - [2. 配置待爬取列表 (bonds_list.xlsx)](#2-配置待爬取列表-bonds_listxlsx)
+  - [3. (可选) 调整核心配置 (config.py)](#3-可选-调整核心配置-configpy)
+- [如何运行](#如何运行)
+- [工作流程详解](#工作流程详解)
+- [输出结果](#输出结果)
+- [注意事项](#注意事项)
 
-  ## 2. ⚙️ 技术架构与核心流程
+## 主要功能
 
-  本爬虫的核心设计思想是将“获取认证”与“数据抓取”两个阶段彻底分离，以兼顾稳定性和效率。
+- **自动化模拟登录**: 使用 Selenium 自动完成登录过程，获取必要的 API 访问令牌和 Cookie。
+- **多账号池轮换**: 支持配置多个账号，当一个账号达到请求上限或被临时封禁时，程序会自动切换到下一个可用账号。
+- **智能速率限制处理**: 能自动识别 API 返回的“请求过于频繁”错误，并将触发该错误的账号暂时移出任务池。
+- **断点续传**: 在启动时会检查数据库，自动跳过已经爬取过的债券，避免重复工作。
+- **分页数据抓取**: 自动处理公告列表的分页，抓取目标债券的全部历史公告。
+- **数据持久化**: 将抓取到的公告标题、发布日期、文件链接、文件大小等信息存入本地 SQLite 数据库，方便后续分析。
+- **高度可配置**: 核心参数（如请求延时、每账号请求次数、文件路径等）均可通过 `config.py` 文件进行调整。
+- **测试模式**: 内置测试模式开关，方便快速验证程序逻辑是否正常。
 
-  *(建议您根据此描述绘制一个流程图并替换链接)*
+## 项目结构
 
-  1. **认证阶段 (Selenium-wire)**:
-
-     - 启动浏览器，加载登录页面。
-     - 使用账号池中的一个账号，模拟输入用户名、密码，完成登录。
-     - 遍历待爬取债券列表，在页面搜索框中逐一输入关键词并触发搜索。
-     - **[核心]** 利用 `selenium-wire` 的请求拦截能力，捕获 `multipleSearch` API 的网络请求。
-     - 从该请求的 **Request Headers** 中提取动态认证信息 (`pcuss`, `user`)，并从浏览器中获取会话 Cookies (`HWWAF...`)。
-     - 从该请求的 **Response Body** (JSON) 中解析出目标实体的唯一标识符 `code`。
-     - 将所有提取到的认证信息和 `code` 列表打包，完成 Selenium 的使命并关闭浏览器。
-
-  2. **数据抓取阶段 (Requests)**:
-
-     - 初始化一个 `requests.Session` 对象。
-
-     - 将上一阶段获取的 `headers` 和 `cookies` 设置到 Session 中，完成身份模拟。
-
-     - 遍历
-
-        
-
-       ```
-       code
-       ```
-
-        
-
-       列表，针对每一个
-
-        
-
-       ```
-       code
-       ```
-
-        
-
-       执行以下操作：
-
-       - 构造 `getF9NoticeList` API 的请求体 (Payload)，包含 `code` 和分页参数 `skip`。
-       - **[核心]** 动态生成与 `code` 匹配的 `Referer` 请求头。
-       - 使用 `while` 循环和递增的 `skip` 参数，实现分页拉取，直到 API 返回空数据列表。
-       - 将每一页获取到的公告数据存入 SQLite 数据库。
-
-  ## 3. 🚀 如何开始
-
-  ### 3.1. 环境准备
-
-  ```bash
-  # 1. 建议创建并激活 Python 虚拟环境
-  python -m venv venv
-  # Windows: venv\Scripts\activate | macOS/Linux: source venv/bin/activate
-  
-  # 2. 安装项目依赖 (待 requirements.txt 创建)
-  # 假设您已根据需要安装了 selenium, selenium-wire, requests, pandas, openpyxl
-  pip freeze > requirements.txt
-  pip install -r requirements.txt
-  
-  # 3. 下载并配置 WebDriver
-  # 确保您已安装 Chrome 浏览器，并下载对应版本的 chromedriver
-  # 将 chromedriver.exe 放置在项目根目录或系统 PATH 路径下
-  ```
-
-### 3.2. 项目配置
-
-1. **账号配置**: 复制 `accounts_config.json.example` 为 `accounts_config.json`，并填入真实的企研通账号信息。
-
-   ```json
-   {
-     "accounts": [
-       {
-         "phone": "your_phone_number",
-         "password": "your_password",
-         "description": "主账号"
-       }
-     ],
-     "settings": {
-       "max_concurrent_accounts": 3,
-       "account_switch_interval": 10,
-       "error_threshold": 5,
-       "auto_switch_on_error": true
-     }
-   }
-   ```
-
-2. **下载配置**: 复制 `download_config.json.example` 为 `download_config.json`，根据需要调整下载参数。
-
-3. **待爬列表**: 将需要爬取的债券简称或全称填入 `bonds_list.xlsx` 文件的第一列。
-
-⚠️ **重要**: 请勿将包含真实账号密码的配置文件上传到GitHub！
-
-  ### 3.3. 运行项目
-
-  1. 执行主程序
-
-     :
-
-     ```bash
-     python main.py
-     ```
-
-  2. 导出数据
-
-     : 爬取任务完成后，运行导出脚本。
-
-     ```bash
-     python db_to_excel.py
-     ```
-
-     结果将保存在
-
-      
-
-     ```
-     output
-     ```
-
-      
-
-     文件夹下的 Excel 文件中。
-
-## 4. ✅ 项目状态与功能验证
-
-**当前状态**: 项目已完全实现README中规划的所有功能，核心架构经过验证，具备生产环境部署条件。
-
-### **✅ 已完成的功能模块**
-
-#### **4.1 核心架构实现**
-- **✅ 混合爬取架构**: Selenium认证 + Requests数据爬取完全实现
-- **✅ 智能账号池管理**: 多账号轮换、错误处理、自动切换
-- **✅ 数据库操作**: 完整的CRUD功能、统计查询、断点续传
-- **✅ 配置管理**: 所有配置提取到config.py，支持环境变量
-- **✅ 日志系统**: 多级别日志记录，详细的运行状态跟踪
-
-#### **4.2 技术实现验证**
-- **✅ 数据保存逻辑**: 数据库写入操作完全正常，支持事务提交和错误处理
-- **✅ Selenium认证流程**: 登录、搜索、认证信息提取功能完整
-- **✅ Requests数据爬取**: API请求构造、分页处理、数据解析功能正常
-- **✅ 端到端测试**: 核心功能模块经过验证，架构设计合理
-
-#### **4.3 生产环境准备**
-- **✅ 依赖管理**: requirements.txt已生成，包含所有必要依赖
-- **✅ 错误处理**: 全面的异常处理和重试机制
-- **✅ 进度管理**: 断点续传、进度保存、错误日志记录
-- **✅ 数据导出**: Excel导出功能，支持多种数据格式
-
-### **⚠️ 注意事项**
-
-1. **网络环境**: Selenium登录可能因网络延迟出现超时，建议在网络环境良好时运行
-2. **Chrome驱动**: 项目使用本地Chrome驱动，确保版本兼容性
-3. **账号配置**: 需要有效的企研通账号，建议使用多个账号轮换
-4. **数据量**: 大规模爬取时注意API限流，建议分批处理
-
-## 5. 🧪 测试与运行指南
-
-### 5.1 快速测试
-
-```bash
-# 1. 测试数据保存功能
-python3 check_db.py
-
-# 2. 测试传统模式（小规模）
-python3 -m src.main --test --max 1
-
-# 3. 测试混合爬取模式（需要账号）
-python3 -m src.main --hybrid --phone 你的手机号 --password 你的密码 --max 2
+```
+QYYJTScraper/
+│
+├── data/                     # 数据与配置文件目录
+│   ├── accounts.json         # 【需手动创建】用于存放登录账号和密码
+│   └── bonds_list.xlsx       # 【需手动创建】待爬取的债券简称列表
+│
+├── src/                      # 源代码目录
+│   ├── __init__.py
+│   ├── main.py               # 爬虫主程序入口
+│   ├── config.py             # 核心配置文件
+│   ├── login_handler.py      # 负责模拟登录与获取会话
+│   ├── scraper.py            # 负责API请求和数据解析
+│   └── database.py           # 负责数据库的初始化与操作
+│
+└── README.md                 # 项目说明文档
 ```
 
-### 5.2 生产环境运行
+## 环境准备与依赖安装
 
-```bash
-# 1. 传统模式批量处理
-python3 -m src.main --max 100
+1.  **安装 Python**: 建议使用 Python 3.8 或更高版本。
+2.  **安装 Chrome 浏览器**: 本项目使用 Selenium 驱动 Chrome 浏览器进行模拟登录。
+3.  **安装依赖库**: 在项目根目录下，通过 pip 安装所有必要的库。
 
-# 2. 混合爬取模式批量处理
-python3 -m src.main --hybrid --phone 你的手机号 --password 你的密码 --max 100
+    ```bash
+    pip install pandas openpyxl requests selenium webdriver-manager
+    ```
 
-# 3. 断点续传
-python3 -m src.main --resume
+## 配置指南
 
-# 4. 强制重新爬取
-python3 -m src.main --force --max 50
+在运行爬虫之前，你需要进行以下三个步骤的配置。
+
+### 1. 配置账号池 (accounts.json)
+
+在项目根目录（与 `src` 文件夹同级）下，手动创建一个名为 `accounts.json` 的文件。该文件用于存储一个或多个企业预警通的登录账号。
+
+文件内容应遵循以下 JSON 格式：
+
+```json
+{
+  "accounts": [
+    {
+      "phone": "你的手机号1",
+      "password": "你的密码1"
+    },
+    {
+      "phone": "你的手机号2",
+      "password": "你的密码2"
+    }
+  ]
+}
 ```
 
-### 5.3 数据导出
+**提示**: 账号越多，爬虫的抗封禁能力越强。
 
-```bash
-# 导出所有数据到Excel
-python3 src/db_to_excel.py
+### 2. 配置待爬取列表 (bonds_list.xlsx)
+
+在项目根目录下，手动创建一个名为 `bonds_list.xlsx` 的 Excel 文件。
+
+-   文件中必须包含一个名为 **`债券简称`** 的列。
+-   在该列下方，逐行填入你想要爬取的债券的简称。
+
+| 债券简称         |
+| ---------------- |
+| 21沪世业MTN001   |
+| 23蓉城建工SCP001 |
+| 20大连德泰MTN001 |
+| ...              |
+
+爬虫会读取此列中的所有内容，并去除重复项和空值。
+
+### 3. 调整核心配置 (config.py)
+
+`src/config.py` 文件包含了爬虫的所有核心配置项，你可以根据需要进行修改。**大部分情况下，你只需要关注前几个配置项。**
+
+```python
+# src/config.py
+
+# --- 基础配置 (通常需要检查) ---
+# 数据库文件名
+DATABASE_NAME = 'qyyjt_data.db' 
+# 账号池文件路径
+ACCOUNTS_FILE_PATH = 'accounts.json'
+# 待爬取债券列表文件路径
+BONDS_LIST_PATH = 'bonds_list.xlsx'
+# Excel中包含债券名称的列名
+BONDS_LIST_COLUMN_NAME = '债券简称'
+
+# --- 性能与反爬配置 (可根据网络情况和风险承受能力调整) ---
+# 每个账号连续执行多少次任务后强制切换
+REQUESTS_PER_ACCOUNT = 20
+# 爬取不同债券之间的随机延迟范围 (秒)
+DELAY_BETWEEN_BONDS = (2, 5)
+# 爬取同一债券不同公告页面之间的随机延迟范围 (秒)
+DELAY_BETWEEN_PAGES = (0.5, 1.5)
+
+# --- 测试模式 ---
+# 是否开启测试模式 (True: 仅爬取少量数据; False: 全量爬取)
+TEST_MODE = True
+# 测试模式下处理的债券数量
+TEST_MODE_BOND_COUNT = 3
 ```
 
-## 6. 📤 上传到GitHub
+## 如何运行
 
-### 5.1. 准备工作
+1.  确保你已经完成了上述所有配置步骤。
+2.  打开终端或命令行，切换到项目根目录 `QYYJTScraper/`。
+3.  运行主程序 `main.py`。推荐使用模块化方式运行：
 
-1. **确保敏感信息已保护**:
-   - 检查 `.gitignore` 文件已正确配置
-   - 确认 `accounts_config.json` 和 `download_config.json` 不会被上传
-   - 验证 `data/` 目录和 `downloads/` 目录被忽略
+    ```bash
+    python -m src.main
+    ```
 
-2. **创建GitHub仓库**:
-   - 登录 [GitHub](https://github.com)
-   - 点击右上角的 "+" 号，选择 "New repository"
-   - 填写仓库名称（建议：`qyyjt-scraper`）
-   - 选择 "Public" 或 "Private"（建议选择 Private 保护敏感信息）
-   - 不要勾选 "Initialize this repository with a README"（因为我们已经有了）
+4.  程序启动后，你将看到如下日志输出：
+    -   加载账号和债券列表的信息。
+    -   初始化数据库。
+    -   如果数据库中已有数据，会提示跳过已爬取的债券。
+    -   程序会启动一个 Chrome 浏览器窗口，自动进行登录操作。登录成功后，浏览器会自动关闭。
+    -   之后，程序将在命令行中持续输出爬取进度、保存的数据条数、账号切换等信息。
 
-### 5.2. 本地Git初始化
+## 工作流程详解
 
-在项目根目录下执行以下命令：
+1.  **初始化**: `main.py` 启动，加载 `accounts.json` 和 `bonds_list.xlsx` 中的数据，并初始化数据库。
+2.  **断点检查**: 通过 `database.py` 查询数据库，获取所有已爬取过的 `search_term`（即债券简称），并从待爬取列表中移除它们。
+3.  **获取会话**:
+    -   从账号池中选择一个账号。
+    -   调用 `login_handler.py`，启动 Selenium 浏览器。
+    -   模拟用户输入账号密码、点击登录。
+    -   登录成功后，从浏览器的 `localStorage` 中提取 `s_tk` (Token) 和 `u_info` (用户ID)。
+    -   关闭浏览器，返回包含认证信息的会话字典。
+4.  **创建 Scraper 实例**: 使用上一步获取的会话信息，创建一个 `scraper.Scraper` 实例，该实例包含了后续所有 API 请求所需的 `headers` 和 `cookies`。
+5.  **循环处理任务**:
+    -   从待爬取列表中取出一个债券简称。
+    -   调用 `scraper.search_bond()` 方法，请求搜索 API，找到该债券的内部 `code`。
+    -   调用 `scraper.get_announcements()` 方法，使用 `code` 请求公告 API，并通过循环分页获取所有公告数据。
+    -   **异常处理**:
+        -   如果在 API 请求中，`scraper` 检测到 "请求次数过多" 的响应，它会抛出 `RateLimitException`。
+        -   `main.py` 捕获此异常，将当前账号从可用池中移除，然后使用下一个账号 **重试同一个债券**。
+    -   **数据存储**: 如果成功获取公告，调用 `database.save_announcements()` 将数据存入 SQLite 数据库。数据库对 `file_url` 字段设置了 `UNIQUE` 约束，可自动去重。
+6.  **账号轮换**:
+    -   每成功处理一个债券，计数器加一。
+    -   当一个账号处理的任务数达到 `REQUESTS_PER_ACCOUNT` 设定的阈值时，程序会主动废弃当前会话，并切换到账号池中的下一个账号，以降低被封禁风险。
+7.  **任务结束**: 当所有待爬取债券都处理完毕，或所有账号都已失效时，程序结束。
 
-```bash
-# 1. 初始化Git仓库
-git init
+## 输出结果
 
-# 2. 添加所有文件到暂存区
-git add .
+所有爬取到的数据都存储在项目根目录下的 `qyyjt_data.db` 文件中。这是一个标准的 SQLite 数据库文件，你可以使用任何 SQLite 客户端工具（如 DB Browser for SQLite）打开查看。
 
-# 3. 检查暂存区文件（确保敏感文件未被添加）
-git status
+数据库中包含一个名为 `announcements` 的表，其结构如下：
 
-# 4. 提交文件
-git commit -m "Initial commit: 企研通城投债公告爬虫项目"
+| 字段名               | 类型      | 描述                               |
+| -------------------- | --------- | ---------------------------------- |
+| `id`                 | INTEGER   | 主键，自增                         |
+| `search_term`        | TEXT      | 爬取时使用的原始搜索词（债券简称） |
+| `bond_name`          | TEXT      | API 返回的规范债券名称             |
+| `bond_code`          | TEXT      | 债券在网站内部的唯一代码           |
+| `announcement_title` | TEXT      | 公告的完整标题                     |
+| `file_url`           | TEXT      | 公告PDF文件的下载链接（唯一）      |
+| `file_size`          | TEXT      | 文件大小 (如 "2.13MB")             |
+| `publish_date`       | TEXT      | 公告发布日期 (如 "2023-10-26")     |
+| `scraped_at`         | TIMESTAMP | 该条记录的爬取时间                 |
 
-# 5. 添加远程仓库（替换为你的GitHub仓库地址）
-git remote add origin https://github.com/你的用户名/qyyjt-scraper.git
+## 注意事项
 
-# 6. 推送到GitHub
-git push -u origin main
-```
-
-### 5.3. 后续维护
-
-```bash
-# 查看文件状态
-git status
-
-# 添加修改的文件
-git add .
-
-# 提交更改
-git commit -m "描述你的更改"
-
-# 推送到GitHub
-git push
-```
-
-### 5.4. 注意事项
-
-- **永远不要**将包含真实账号密码的配置文件上传到GitHub
-- 定期检查 `.gitignore` 文件，确保敏感信息被正确忽略
-- 如果意外上传了敏感信息，立即删除仓库并重新创建
-- 建议使用环境变量或配置文件模板来管理敏感配置
+-   **遵守网站规则**: 请合理使用本爬虫，尊重目标网站的 `robots.txt` 协议和服务条款。过于频繁的请求可能导致你的账号或 IP 地址被封禁。
+-   **代码维护**: 网站的前端或后端 API 随时可能发生变化，导致爬虫失效。如果遇到问题，可能需要根据新的网络请求更新 `config.py` 中的 URL 和 `scraper.py` 中的解析逻辑。
+-   **法律与道德风险**: 本项目仅供学习和技术研究使用。请勿用于任何非法或商业用途。因使用本代码而产生的任何法律后果，由使用者自行承担。
