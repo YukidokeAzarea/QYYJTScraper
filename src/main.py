@@ -49,9 +49,9 @@ def run_scraper_with_account_pool():
     """
     [优化版] 使用账号池执行爬虫，实现会话复用、防系统休眠。
     """
-    # [新增] 使用 with 语句块来包裹整个爬虫流程，确保在运行时系统不会休眠
-    # keep_screen_awake=False 表示只阻止系统睡眠，不阻止屏幕关闭，更节能。
-    with keep.awake(keep_screen_awake=False):
+    # [已修正] 使用正确的 wakepy 模式 keep.running()。
+    # 这个模式会阻止系统休眠，但允许屏幕关闭，更加节能。
+    with keep.running():
         print("\n" + "*"*25)
         print("--- [系统] 防休眠模式已激活 ---")
         print("爬虫运行期间，计算机将不会进入睡眠状态。")
@@ -190,7 +190,7 @@ def run_scraper_with_account_pool():
                 print("原因：所有账号均已耗尽或被限制。")
         print("#"*60)
 
-    # [新增] with 语句块结束，程序会自动恢复系统的正常休眠策略
+    # with 语句块结束，程序会自动恢复系统的正常休眠策略
     print("\n--- [系统] 防休眠模式已解除 ---")
 
 
