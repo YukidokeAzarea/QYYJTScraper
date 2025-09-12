@@ -56,7 +56,7 @@ QYYJTScraper/
 3.  **安装依赖库**: 在项目根目录下，通过 pip 安装所有必要的库。
 
     ```bash
-    pip install pandas openpyxl requests selenium webdriver-manager
+    pip install pandas openpyxl requests selenium webdriver-manager wakepy
     ```
 
 ## 配置指南
