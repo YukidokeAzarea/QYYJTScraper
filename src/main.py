@@ -156,6 +156,19 @@ def run_scraper_with_account_pool():
                     print(f"任务完成，暂停 {sleep_duration:.2f} 秒...")
                     time.sleep(sleep_duration)
 
+            # [新增] 捕获 Token 过期异常
+            except scraper.TokenExpiredException as e:
+                print(f"\n!!!!!!!!!! 会话失效 !!!!!!!!!!")
+                print(f"账号 {active_accounts[account_index]['phone']} 的 Token 已过期: {e}")
+                print(f"将销毁当前会话，并使用同一账号尝试重新登录，重试任务 '{bonds_to_scrape[bond_index]}'")
+                print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+                
+                current_scraper = None # 关键：销毁当前 Scraper 实例
+                # 注意：我们不增加 bond_index，以便重试当前债券
+                # 注意：我们不切换账号，因为当前账号本身没问题
+                
+                time.sleep(5) # 稍作等待再重新登录
+
             except scraper.RateLimitException as e:
                 print(f"\n!!!!!!!!!! 警告 !!!!!!!!!!")
                 print(f"账号 {active_accounts[account_index]['phone']} 已被服务器限制: {e}")

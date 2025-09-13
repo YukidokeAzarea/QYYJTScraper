@@ -11,6 +11,10 @@ from . import config
 class RateLimitException(Exception):
     pass
 
+# [新增] 自定义异常，用于通知主程序 Token 已过期
+class TokenExpiredException(Exception):
+    pass
+
 class Scraper:
     def __init__(self, auth_session: dict):
         # ... (构造函数不变)
@@ -33,10 +37,16 @@ class Scraper:
             'referer': 'https://www.qyyjt.cn/home'
         }
     
-    def _check_for_rate_limit(self, response_data: dict):
-        """ [新增] 检查API响应是否表明已达到速率限制 """
+    def _check_response_for_errors(self, response_data: dict):
+        """ [修改] 检查API响应是否包含需要特殊处理的错误，如速率限制或Token过期 """
         info = response_data.get('info', '')
-        # 根据你提到的 "API请求次数过多请稍后重试" 定制关键词
+        return_code = response_data.get('returncode')
+
+        # 检查 Token 过期
+        if return_code == 104 and "token过时" in info:
+            raise TokenExpiredException(f"Token 已过期: {info}")
+
+        # 检查 API 速率限制
         if info and "请求次数过多" in info:
             raise RateLimitException(f"账号被限制: {info}")
 
@@ -66,8 +76,8 @@ class Scraper:
             response.raise_for_status()
             data = response.json()
 
-            # [新增] 在处理数据前检查是否被限流
-            self._check_for_rate_limit(data)
+            # [修改] 在处理数据前检查是否被限流或Token过期
+            self._check_response_for_errors(data)
 
             if data.get('returncode') == 0 and data.get('data') and data['data'].get('list'):
                 # ... (后续逻辑不变)
@@ -130,8 +140,8 @@ class Scraper:
                 response.raise_for_status()
                 data = response.json()
 
-                # [新增] 检查是否被限流
-                self._check_for_rate_limit(data)
+                # [修改] 检查是否被限流或Token过期
+                self._check_response_for_errors(data)
 
                 if data.get('returncode') == 0:
                     current_page_announcements = data.get('data', [])

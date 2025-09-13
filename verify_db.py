@@ -9,7 +9,8 @@ DATABASE_NAME = "qyyjt_data.db"
 # 要查询的表名
 TABLE_NAME = "announcements"
 # 要显示的行数
-ROW_LIMIT = 5
+ROW_LIMIT = 20
+
 
 def check_database():
     """连接到数据库并打印表中的前几行数据，用于快速验证。"""
