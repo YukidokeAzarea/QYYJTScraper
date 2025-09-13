@@ -44,11 +44,12 @@ class Scraper:
 
         # 检查 Token 过期
         if return_code == 104 and "token过时" in info:
-            raise TokenExpiredException(f"Token 已过期: {info}")
+            raise TokenExpiredException(f"Token 已过期 (Code: 104): {info}")
 
-        # 检查 API 速率限制
-        if info and "请求次数过多" in info:
-            raise RateLimitException(f"账号被限制: {info}")
+        # 检查 API 速率限制，使用更可靠的 returncode == 206 进行判断
+        # 同时为了保险，也检查 info 文本中是否包含 "请求过多"
+        if return_code == 206 and "请求过多" in info:
+            raise RateLimitException(f"账号被限制 (Code: 206): {info}")
 
     def search_bond(self, search_term: str):
         # ... (前半部分不变)
