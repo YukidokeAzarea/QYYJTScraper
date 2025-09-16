@@ -2,7 +2,7 @@
 
 这是一个针对 **企业预警通 (qyyjt.cn)** 网站的 Python 爬虫项目，旨在自动化地抓取指定债券列表的所有相关公告信息，并将结果持久化存储到 SQLite 数据库中。
 
-该爬虫通过模拟登录获取认证凭据，然后直接与后端 API 交互，实现了高效、稳定的数据采集。同时，它还内置了多账号轮换、速率限制处理、断点续传等高级功能，非常适合进行批量数据采集任务。
+该爬虫通过模拟登录获取认证凭据，然后直接与后端 API 交互，实现了高效、稳定的数据采集。同时，还内置了多账号轮换、速率限制处理、断点续传等高级功能，非常适合进行批量数据采集任务。项目还附带了一套强大的数据处理工具，可以方便地将数据库导出为 Excel、查询特定公告并批量下载文件。
 
 ## 目录
 
@@ -13,7 +13,11 @@
   - [1. 配置账号池 (accounts.json)](#1-配置账号池-accountsjson)
   - [2. 配置待爬取列表 (bonds_list.xlsx)](#2-配置待爬取列表-bonds_listxlsx)
   - [3. (可选) 调整核心配置 (config.py)](#3-可选-调整核心配置-configpy)
-- [如何运行](#如何运行)
+- [如何运行爬虫](#如何运行爬虫)
+- [数据分析与下载工具](#数据分析与下载工具)
+  - [1. 导出数据库到 Excel (`db_to_excel.py`)](#1-导出数据库到-excel-db_to_excelpy)
+  - [2. 查询公告并生成下载任务 (`query_db.py`)](#2-查询公告并生成下载任务-query_dbpy)
+  - [3. 下载文件 (`download_files.py`)](#3-下载文件-download_filespy)
 - [工作流程详解](#工作流程详解)
 - [输出结果](#输出结果)
 - [注意事项](#注意事项)
@@ -25,9 +29,12 @@
 - **智能速率限制处理**: 能自动识别 API 返回的“请求过于频繁”错误，并将触发该错误的账号暂时移出任务池。
 - **断点续传**: 在启动时会检查数据库，自动跳过已经爬取过的债券，避免重复工作。
 - **分页数据抓取**: 自动处理公告列表的分页，抓取目标债券的全部历史公告。
-- **数据持久化**: 将抓取到的公告标题、发布日期、文件链接、文件大小等信息存入本地 SQLite 数据库，方便后续分析。
-- **高度可配置**: 核心参数（如请求延时、每账号请求次数、文件路径等）均可通过 `config.py` 文件进行调整。
-- **测试模式**: 内置测试模式开关，方便快速验证程序逻辑是否正常。
+- **数据持久化**: 将抓取到的公告信息存入本地 SQLite 数据库，方便后续分析。
+- **便捷的数据导出与下载**:
+  - 一键将数据库导出为 Excel 文件，便于数据预览和分享。
+  - 支持按关键字查询公告，并批量下载相关文件。
+  - 下载时自动根据年份和标题生成结构化文件名，便于整理归档。
+- **高度可配置**: 核心参数（如请求延时、文件路径等）均可通过 `config.py` 文件进行调整。
 
 ## 项目结构
 
@@ -38,7 +45,12 @@ QYYJTScraper/
 │   ├── accounts.json         # 【需手动创建】用于存放登录账号和密码
 │   └── bonds_list.xlsx       # 【需手动创建】待爬取的债券简称列表
 │
-├── src/                      # 源代码目录
+├── output/                   # 【Git忽略】所有生成的输出文件
+│   ├── downloaded_reports/   # 示例：下载的文件存放地
+│   ├── download_tasks.json   # 示例：查询生成的JSON任务
+│   └── qyyjt_data_export.xlsx# 示例：导出的Excel文件
+│
+├── src/                      # 爬虫核心源代码目录
 │   ├── __init__.py
 │   ├── main.py               # 爬虫主程序入口
 │   ├── config.py             # 核心配置文件
@@ -46,6 +58,12 @@ QYYJTScraper/
 │   ├── scraper.py            # 负责API请求和数据解析
 │   └── database.py           # 负责数据库的初始化与操作
 │
+├── tools/                    # 辅助工具脚本目录
+│   ├── db_to_excel.py        # 数据库转Excel工具
+│   ├── query_db.py# 公告查询工具
+│   └── download_files.py     # 文件下载工具
+│
+├── .gitignore                # Git忽略配置文件
 └── README.md                 # 项目说明文档
 ```
 
@@ -65,11 +83,11 @@ QYYJTScraper/
 
 ### 1. 配置账号池 (accounts.json)
 
-在项目根目录（与 `src` 文件夹同级）下，手动创建一个名为 `accounts.json` 的文件。该文件用于存储一个或多个企业预警通的登录账号。
+在 `data/` 目录下，手动创建一个名为 `accounts.json` 的文件。该文件用于存储一个或多个企业预警通的登录账号。
 
 文件内容应遵循以下 JSON 格式：
-
 ```json
+// 文件路径: QYYJTScraper/data/accounts.json
 {
   "accounts": [
     {
@@ -83,12 +101,11 @@ QYYJTScraper/
   ]
 }
 ```
-
 **提示**: 账号越多，爬虫的抗封禁能力越强。
 
 ### 2. 配置待爬取列表 (bonds_list.xlsx)
 
-在项目根目录下，手动创建一个名为 `bonds_list.xlsx` 的 Excel 文件。
+在 `data/` 目录下，手动创建一个名为 `bonds_list.xlsx` 的 Excel 文件。
 
 -   文件中必须包含一个名为 **`债券简称`** 的列。
 -   在该列下方，逐行填入你想要爬取的债券的简称。
@@ -102,39 +119,34 @@ QYYJTScraper/
 
 爬虫会读取此列中的所有内容，并去除重复项和空值。
 
-### 3. 调整核心配置 (config.py)
+### 3. (可选) 调整核心配置 (config.py)
 
-`src/config.py` 文件包含了爬虫的所有核心配置项，你可以根据需要进行修改。**大部分情况下，你只需要关注前几个配置项。**
+`src/config.py` 文件包含了爬虫的所有核心配置项，你可以根据需要进行修改。**大部分情况下，你只需要检查文件路径是否正确。**
 
 ```python
 # src/config.py
 
 # --- 基础配置 (通常需要检查) ---
-# 数据库文件名
+# 数据库文件名 (会生成在项目根目录)
 DATABASE_NAME = 'qyyjt_data.db' 
 # 账号池文件路径
-ACCOUNTS_FILE_PATH = 'accounts.json'
+ACCOUNTS_FILE_PATH = 'data/accounts.json'
 # 待爬取债券列表文件路径
-BONDS_LIST_PATH = 'bonds_list.xlsx'
+BONDS_LIST_PATH = 'data/bonds_list.xlsx'
 # Excel中包含债券名称的列名
 BONDS_LIST_COLUMN_NAME = '债券简称'
 
 # --- 性能与反爬配置 (可根据网络情况和风险承受能力调整) ---
-# 每个账号连续执行多少次任务后强制切换
 REQUESTS_PER_ACCOUNT = 20
-# 爬取不同债券之间的随机延迟范围 (秒)
 DELAY_BETWEEN_BONDS = (2, 5)
-# 爬取同一债券不同公告页面之间的随机延迟范围 (秒)
 DELAY_BETWEEN_PAGES = (0.5, 1.5)
 
 # --- 测试模式 ---
-# 是否开启测试模式 (True: 仅爬取少量数据; False: 全量爬取)
 TEST_MODE = True
-# 测试模式下处理的债券数量
 TEST_MODE_BOND_COUNT = 3
 ```
 
-## 如何运行
+## 如何运行爬虫
 
 1.  确保你已经完成了上述所有配置步骤。
 2.  打开终端或命令行，切换到项目根目录 `QYYJTScraper/`。
@@ -144,42 +156,60 @@ TEST_MODE_BOND_COUNT = 3
     python -m src.main
     ```
 
-4.  程序启动后，你将看到如下日志输出：
-    -   加载账号和债券列表的信息。
-    -   初始化数据库。
-    -   如果数据库中已有数据，会提示跳过已爬取的债券。
-    -   程序会启动一个 Chrome 浏览器窗口，自动进行登录操作。登录成功后，浏览器会自动关闭。
-    -   之后，程序将在命令行中持续输出爬取进度、保存的数据条数、账号切换等信息。
+4.  程序启动后，你将看到日志输出：加载配置、初始化数据库、自动登录、爬取进度等。
+
+## 数据分析与下载工具
+
+本项目提供了一系列位于 `tools/` 目录下的辅助脚本，用于分析已爬取的数据和下载相关文件。所有工具的输出默认都会存放在 `output/` 目录下。
+
+### 1. 导出数据库到 Excel (`db_to_excel.py`)
+
+此工具可将整个 SQLite 数据库导出为一个 Excel 文件，每个数据表对应一个工作表，方便进行数据预览和分析。
+
+**使用方法:**
+```bash
+# 将 qyyjt_data.db 导出为 output/qyyjt_data_export.xlsx
+python tools/db_to_excel.py qyyjt_data.db
+```
+
+### 2. 查询公告并生成下载任务 (`query_db.py`)
+
+根据关键字查询数据库中的公告，并将结果（包含URL、标题、日期等信息）保存为一个 `JSON` 任务文件。
+
+**使用方法:**
+```bash
+# 查询所有“年度报告”并生成任务文件 output/download_tasks.json
+python tools/query_db.py "年度报告" --db qyyjt_data.db
+```
+
+### 3. 下载文件 (`download_files.py`)
+
+读取上一步生成的 `JSON` 任务文件，批量下载公告，并根据年份和标题自动生成结构化的文件名。
+
+**使用方法:**
+```bash
+# 从任务文件下载，并保存到 output/年度报告 文件夹
+python tools/download_files.py output/download_tasks.json --save_dir output/年度报告
+```
 
 ## 工作流程详解
 
-1.  **初始化**: `main.py` 启动，加载 `accounts.json` 和 `bonds_list.xlsx` 中的数据，并初始化数据库。
-2.  **断点检查**: 通过 `database.py` 查询数据库，获取所有已爬取过的 `search_term`（即债券简称），并从待爬取列表中移除它们。
-3.  **获取会话**:
-    -   从账号池中选择一个账号。
-    -   调用 `login_handler.py`，启动 Selenium 浏览器。
-    -   模拟用户输入账号密码、点击登录。
-    -   登录成功后，从浏览器的 `localStorage` 中提取 `s_tk` (Token) 和 `u_info` (用户ID)。
-    -   关闭浏览器，返回包含认证信息的会话字典。
-4.  **创建 Scraper 实例**: 使用上一步获取的会话信息，创建一个 `scraper.Scraper` 实例，该实例包含了后续所有 API 请求所需的 `headers` 和 `cookies`。
-5.  **循环处理任务**:
-    -   从待爬取列表中取出一个债券简称。
-    -   调用 `scraper.search_bond()` 方法，请求搜索 API，找到该债券的内部 `code`。
-    -   调用 `scraper.get_announcements()` 方法，使用 `code` 请求公告 API，并通过循环分页获取所有公告数据。
-    -   **异常处理**:
-        -   如果在 API 请求中，`scraper` 检测到 "请求次数过多" 的响应，它会抛出 `RateLimitException`。
-        -   `main.py` 捕获此异常，将当前账号从可用池中移除，然后使用下一个账号 **重试同一个债券**。
-    -   **数据存储**: 如果成功获取公告，调用 `database.save_announcements()` 将数据存入 SQLite 数据库。数据库对 `file_url` 字段设置了 `UNIQUE` 约束，可自动去重。
-6.  **账号轮换**:
-    -   每成功处理一个债券，计数器加一。
-    -   当一个账号处理的任务数达到 `REQUESTS_PER_ACCOUNT` 设定的阈值时，程序会主动废弃当前会话，并切换到账号池中的下一个账号，以降低被封禁风险。
-7.  **任务结束**: 当所有待爬取债券都处理完毕，或所有账号都已失效时，程序结束。
+1.  **初始化**: `main.py` 启动，加载 `data/` 目录下的配置文件，并初始化数据库。
+2.  **断点检查**: 查询数据库，获取已爬取过的债券简称，实现断点续传。
+3.  **获取会话**: 调用 `login_handler.py`，通过 Selenium 模拟登录获取认证信息。
+4.  **创建 Scraper 实例**: 使用认证信息创建 `scraper.Scraper` 实例，用于后续 API 请求。
+5.  **循环处理任务**: 遍历待爬取列表，调用 `scraper` 搜索债券 `code` 并获取所有公告。
+    -   **异常处理**: 捕获 `RateLimitException`，自动切换账号重试。
+    -   **数据存储**: 调用 `database.save_announcements()` 将数据存入 SQLite。
+6.  **账号轮换**: 根据 `REQUESTS_PER_ACCOUNT` 配置，主动轮换账号以降低风险。
+7.  **任务结束**: 所有任务完成或所有账号失效后，程序结束。
 
 ## 输出结果
 
-所有爬取到的数据都存储在项目根目录下的 `qyyjt_data.db` 文件中。这是一个标准的 SQLite 数据库文件，你可以使用任何 SQLite 客户端工具（如 DB Browser for SQLite）打开查看。
+-   **数据库**: 所有爬取到的原始数据都存储在项目根目录下的 `qyyjt_data.db` 文件中。你可以使用任何 SQLite 客户端工具（如 DB Browser for SQLite）打开查看。
+-   **分析与下载**: 使用 `tools/` 目录下的脚本所生成的 Excel 文件、JSON 任务文件和下载的 PDF 文件，默认都会存放在 `output/` 目录中。
 
-数据库中包含一个名为 `announcements` 的表，其结构如下：
+数据库中 `announcements` 表的结构如下：
 
 | 字段名               | 类型      | 描述                               |
 | -------------------- | --------- | ---------------------------------- |
@@ -190,7 +220,7 @@ TEST_MODE_BOND_COUNT = 3
 | `announcement_title` | TEXT      | 公告的完整标题                     |
 | `file_url`           | TEXT      | 公告PDF文件的下载链接（唯一）      |
 | `file_size`          | TEXT      | 文件大小 (如 "2.13MB")             |
-| `publish_date`       | TEXT      | 公告发布日期 (如 "2023-10-26")     |
+| `publish_date`       | TEXT      | 公告发布日期 (如 "20231026110255") |
 | `scraped_at`         | TIMESTAMP | 该条记录的爬取时间                 |
 
 ## 注意事项

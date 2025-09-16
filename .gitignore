@@ -1,75 +1,31 @@
-# 敏感配置文件
-accounts_config.json
-download_config.json
-
-# 数据文件
-data/
-*.db
-*.sqlite
-*.sqlite3
-
-# 日志文件
-logs/
-*.log
-
-# 临时文件
-*.tmp
-*.temp
-~$*
-
-# Python缓存
+# Python 缓存文件
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+*.pyc
+*.pyo
+*.pyd
 
-# 虚拟环境
-venv/
+# 虚拟环境目录 (常见的几种名称)
+.venv
+venv
 env/
 ENV/
 
-# IDE文件
+# IDE/编辑器配置文件
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
-# 系统文件
-.DS_Store
-Thumbs.db
+# --- 核心忽略规则 ---
 
-# 进度和错误日志
-progress.json
-error_log.json
-pause.flag
-progress_backup_*.json
+# 1. 忽略所有数据库文件
+# 这样你的 qyyjt_data.db 就不会被上传
+*.db
+*.sqlite3
 
-# Excel临时文件
-~$*.xlsx
-~$*.xls
-
-# Chrome驱动（可选，如果不想上传）
-# chromedriver-mac-x64/
-# chromedriver.exe
-# chromedriver
-
-# 测试输出
-test_output/
+# 2. 忽略整个 output 目录
 output/
+
+# 3. 忽略 data 目录下的敏感文件
+data/
+
+# 如果有日志文件
+*.log
